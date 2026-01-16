@@ -89,7 +89,9 @@ export const handler = async (event: EventObj): Promise<any> => {
           throw getErrorObj("NoAdminsFound", "No administrators found");
         }
 
-        const adminEmails = resp.Items.map((admin) => admin.email);
+        const adminEmails = resp.Items.filter(
+          (admin) => admin.email !== applicantId
+        ).map((admin) => admin.email);
 
         const apiBaseUrl =
           process.env.API_BASE_URL || "https://your-api-domain.com";
