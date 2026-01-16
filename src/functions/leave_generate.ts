@@ -2,7 +2,7 @@ import { APIGatewayEvent } from "aws-lambda";
 import { docClient } from "../utils/db";
 import { PutCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
 import { getLeaveId, Leave, Response, ResponseObj } from "../types";
-import { validateDate } from "../helpers";
+import { validateDateInputs } from "../helpers";
 import { sfnClient } from "../utils/sfnClient";
 import { StartExecutionCommand } from "@aws-sdk/client-sfn";
 
@@ -26,20 +26,10 @@ export const handler = async (event: APIGatewayEvent): Promise<Response> => {
       return new ResponseObj(400, { message: "from and to are required" });
     }
 
-    if (!validateDate(from) || !validateDate(to)) {
-      return new ResponseObj(400, {
-        message: "Invalid date format ex: (MM/DD/YYYY), (YYYY-MM-DD)",
-      });
-    }
+    const isValidDateInputs = validateDateInputs(from, to, fromTime, toTime);
 
-    if (new Date(from) > new Date(to)) {
-      return new ResponseObj(400, { message: "from cannot be later than to" });
-    }
-
-    if (new Date(from) < new Date()) {
-      return new ResponseObj(400, {
-        message: "from date cannot be in the past",
-      });
+    if (!isValidDateInputs.valid) {
+      return new ResponseObj(400, { message: isValidDateInputs.message });
     }
 
     console.log("Request body parsed:", event);
@@ -53,11 +43,28 @@ export const handler = async (event: APIGatewayEvent): Promise<Response> => {
       return new ResponseObj(400, { message: "Unauthorized entity" });
     }
 
+    // Create datetime objects with time information
+    const fromDateTime = new Date(from);
+    if (fromTime) {
+      const [hours, minutes] = fromTime.split(":").map(Number);
+      fromDateTime.setHours(hours, minutes, 0, 0);
+    } else {
+      fromDateTime.setHours(0, 0, 0, 0);
+    }
+
+    const toDateTime = new Date(to);
+    if (toTime) {
+      const [hours, minutes] = toTime.split(":").map(Number);
+      toDateTime.setHours(hours, minutes, 0, 0);
+    } else {
+      toDateTime.setHours(23, 59, 59, 999);
+    }
+
     // Check if there is pending leave for the user in the given date range
     const existingLeaveCommand = new GetCommand({
       TableName: process.env.LEAVE_TABLE_NAME!,
       Key: {
-        leaveId: getLeaveId(userId, new Date(from), new Date(to)),
+        leaveId: getLeaveId(userId, fromDateTime, toDateTime),
       },
     });
 
@@ -70,8 +77,8 @@ export const handler = async (event: APIGatewayEvent): Promise<Response> => {
     }
 
     const leaveObj = new Leave({
-      fromDate: new Date(from).toISOString(),
-      toDate: new Date(to).toISOString(),
+      fromDate: fromDateTime.toISOString(),
+      toDate: toDateTime.toISOString(),
       reason,
       applicantId: userId,
       applicantName: userName,
@@ -82,24 +89,19 @@ export const handler = async (event: APIGatewayEvent): Promise<Response> => {
       Item: leaveObj,
       ConditionExpression: `attribute_not_exists(#leaveId)`,
       ExpressionAttributeNames: {
-        "#leaveId": getLeaveId(
-          leaveObj.applicantId,
-          new Date(leaveObj.fromDate),
-          new Date(leaveObj.toDate)
-        ),
+        "#leaveId": getLeaveId(leaveObj.applicantId, fromDateTime, toDateTime),
       },
     });
 
     await docClient.send(putCommand);
 
     // Trigger the step function to process the leave application
-    // (e.g., send notification to manager, etc.)
     const startExecutionCommand = new StartExecutionCommand({
       stateMachineArn: process.env.LEAVE_PROCESSING_STATE_MACHINE_ARN!,
       input: JSON.stringify({
         type: "request",
         timeoutSecondsForRequest: Math.floor(
-          (new Date(to).getTime() - new Date(from).getTime()) / 1000
+          (toDateTime.getTime() - fromDateTime.getTime()) / 1000
         ),
         ...leaveObj,
       }),
