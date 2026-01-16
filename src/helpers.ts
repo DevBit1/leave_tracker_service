@@ -18,7 +18,7 @@ export const sendEmailNotification = async ({
   subject: string;
   bodyText: string;
   bodyHtml?: string;
-}): Promise<void> => {
+}): Promise<any> => {
   try {
     const sendCommand = new SendEmailCommand({
       Source: sender,
@@ -39,7 +39,12 @@ export const sendEmailNotification = async ({
         },
       },
     });
-  } catch (error) {}
+
+    return await sesClient.send(sendCommand);
+  } catch (error) {
+    console.error("Error sending email:", error);
+    throw error;
+  }
 };
 
 export const getErrorObj = (name: string, message?: string): Error => {
@@ -47,4 +52,8 @@ export const getErrorObj = (name: string, message?: string): Error => {
   err.name = name;
 
   return err;
+}
+
+export const getTimeoutSeconds = (from: Date, to: Date): number => {
+  new Date().
 }

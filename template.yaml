@@ -1,0 +1,240 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Leave Management Service
+
+Globals:
+  Function:
+    Environment:
+      Variables:
+        AWS_REGION_OP: !Ref "AWS::Region"
+    Runtime: nodejs24.x
+    EphemeralStorage:
+      Size: 1024
+    CodeUri: .
+
+Parameters:
+  SecretArn:
+    Type: String
+    Description: ARN of the secret for JWT token verification
+  SecretName:
+    Type: String
+    Description: Name of the secret for JWT token verification
+  UsersTableName:
+    Type: String
+    Description: Name of the DynamoDB table for Users
+  UsersGSIName:
+    Type: String
+    Description: Name of the GSI on the Users table
+  SenderEmail:
+    Type: String
+    Description: Verified email address to send notification emails from
+
+Resources:
+  LeaveGateway:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: LeaveManagementService-API-SKR
+      StageName: dev
+      MethodSettings:
+        - LoggingLevel: INFO
+          DataTraceEnabled: true
+          HttpMethod: "*"
+          ResourcePath: "/*"
+      Auth:
+        Authorizers:
+          LambdaRequestAuthorizerFn:
+            FunctionArn: !GetAtt AuthorizerFunction.Arn
+            FunctionPayloadType: REQUEST
+            Identity:
+              Headers:
+                - Authorization
+              ReauthorizeEvery: 100
+        DefaultAuthorizer: LambdaRequestAuthorizerFn
+
+  LeaveRequestTable:
+    Type: AWS::Serverless::SimpleTable
+    Properties:
+      PrimaryKey:
+        Name: leaveId
+        Type: String
+      TableName: LeaveRequestTable-SKR
+
+  LeaveManagementStateMachine:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      Name: LeaveManagementService-StateMachine-SKR
+      Type: STANDARD
+      Policies:
+        - Statement:
+            Effect: "Allow"
+            Action:
+              - "lambda:InvokeFunction"
+            Resource:
+              - "*" # Figure out how to specify only the NotifyUsersFunction ARN here without creating circular dependency
+      DefinitionUri: src/state_machines/main_machine.asl.json
+
+  AuthorizerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: LeaveManagementService-Authorizer-SKR
+      Handler: authorizer.handler
+      Policies:
+        - CloudWatchPutMetricPolicy: {}
+        - AWSSecretsManagerGetSecretValuePolicy:
+            SecretArn: !Ref SecretArn
+      Environment:
+        Variables:
+          SECRET_NAME: !Ref SecretName
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Format: cjs
+        Minify: false
+        Target: node18
+        EntryPoints:
+          - src/auth/authorizer.ts
+        External:
+          - "@aws-sdk/client-secrets-manager"
+          - "aws-lambda"
+
+  LeaveRequestFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: LeaveManagementService-LeaveRequest-SKR
+      Handler: leave_generate.handler
+      Policies:
+        - CloudWatchPutMetricPolicy: {}
+        - DynamoDBCrudPolicy:
+            TableName: !Ref LeaveRequestTable
+        - StepFunctionsExecutionPolicy:
+            StateMachineName: LeaveManagementService-StateMachine-SKR
+      Environment:
+        Variables:
+          LEAVE_TABLE_NAME: !Ref LeaveRequestTable
+          LEAVE_PROCESSING_STATE_MACHINE_ARN: !Ref LeaveManagementStateMachine
+      Events:
+        RequestApi:
+          Type: Api
+          Properties:
+            Path: /leave/request
+            Method: post
+            RestApiId: !Ref LeaveGateway
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Format: cjs
+        Minify: false
+        Target: node18
+        EntryPoints:
+          - src/functions/leave_generate.ts
+        External:
+          - "@aws-sdk/client-sfn"
+          - "@aws-sdk/client-dynamodb"
+          - "aws-lambda"
+
+  ResumeStateMachine:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: LeaveManagementService-ResumeStateMachine-SKR
+      Handler: resume_machine.handler
+      Policies:
+        - CloudWatchPutMetricPolicy: {}
+        - DynamoDBReadPolicy:
+            TableName: !Ref LeaveRequestTable
+        - Statement:
+            Effect: Allow
+            Action:
+              - "states:SendTaskSuccess"
+              - "states:SendTaskFailure"
+            Resource:
+              - !Ref LeaveManagementStateMachine
+      Environment:
+        Variables:
+          LEAVE_TABLE_NAME: !Ref LeaveRequestTable
+      Events:
+        AcceptApi:
+          Type: Api
+          Properties:
+            Path: /leave/accept/{leaveId}
+            Method: get
+            RestApiId: !Ref LeaveGateway
+            Auth:
+              Authorizer: NONE
+        RejectApi:
+          Type: Api
+          Properties:
+            Path: /leave/reject/{leaveId}
+            Method: get
+            RestApiId: !Ref LeaveGateway
+            Auth:
+              Authorizer: NONE
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Format: cjs
+        Minify: false
+        Target: node18
+        EntryPoints:
+          - src/functions/resume_machine.ts
+        External:
+          - "@aws-sdk/client-sfn"
+          - "@aws-sdk/client-dynamodb"
+          - "aws-lambda"
+
+  NotifyUsersFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: LeaveManagementService-NotifyUsers-SKR
+      Handler: notify_users.handler
+      Policies:
+        - CloudWatchPutMetricPolicy: {}
+        - DynamoDBReadPolicy:
+            TableName: !Ref UsersTableName
+        - DynamoDBWritePolicy:
+            TableName: !Ref LeaveRequestTable
+        - Statement:
+            Effect: Allow
+            Action:
+              - "ses:SendEmail"
+              - "ses:SendRawEmail"
+            Resource: "*"
+      Environment:
+        Variables:
+          LEAVE_TABLE_NAME: !Ref LeaveRequestTable
+          USER_TABLE_NAME: !Ref UsersTableName
+          API_BASE_URL: !Sub "https://${LeaveGateway}.execute-api.${AWS::Region}.amazonaws.com/dev"
+          USER_GSI_NAME: !Ref UsersGSIName
+          SENDER_EMAIL: !Ref SenderEmail
+
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Format: cjs
+        Minify: false
+        Target: node18
+        EntryPoints:
+          - src/functions/notify_users.ts
+        External:
+          - "@aws-sdk/client-dynamodb"
+          - "@aws-sdk/client-ses"
+          - "aws-lambda"
+
+Outputs:
+  LeaveApiUrl:
+    Description: "API Gateway endpoint URL for Leave Management Service"
+    Value: !Sub "https://${LeaveGateway}.execute-api.${AWS::Region}.amazonaws.com/dev"
+  LeaveRequestFunctionArn:
+    Description: "ARN of the Leave Request Lambda Function"
+    Value: !GetAtt LeaveRequestFunction.Arn
+  ResumeStateMachineArn:
+    Description: "ARN of the Resume State Machine Lambda Function"
+    Value: !GetAtt ResumeStateMachine.Arn
+  NotifyUsersFunctionArn:
+    Description: "ARN of the Notify Users Lambda Function"
+    Value: !GetAtt NotifyUsersFunction.Arn
+  LeaveManagementStateMachineArn:
+    Description: "ARN of the Leave Management State Machine"
+    Value: !GetAtt LeaveManagementStateMachine.Arn
+  AuthorizerFunctionArn:
+    Description: "ARN of the Authorizer Lambda Function"
+    Value: !GetAtt AuthorizerFunction.Arn

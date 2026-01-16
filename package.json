@@ -4,7 +4,10 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "sam:build": "sam build --config-env dev --config-file sam_config.yaml",
+    "sam:deploy": "sam deploy --config-env dev --config-file sam_config.yaml",
+    "sam:sync": "sam sync --config-env dev --config-file sam_config.yaml"
   },
   "keywords": [],
   "author": "",
@@ -21,9 +24,11 @@
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.958.0",
+    "@aws-sdk/client-secrets-manager": "^3.969.0",
     "@aws-sdk/client-ses": "^3.968.0",
     "@aws-sdk/client-sfn": "^3.968.0",
     "@aws-sdk/lib-dynamodb": "^3.962.0",
+    "date-fns": "^4.1.0",
     "esbuild": "^0.27.2",
     "jsonwebtoken": "^9.0.3",
     "uuid": "^13.0.0"

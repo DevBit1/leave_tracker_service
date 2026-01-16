@@ -8,6 +8,8 @@ import { StartExecutionCommand } from "@aws-sdk/client-sfn";
 
 // Permissions this function needs:
 // 1. DynamoDB Write/Read access to LEAVE_TABLE_NAME
+// 2. CloudWatch Logs permissions to write logs
+// 3. Step Functions StartExecution permission
 
 export const handler = async (event: APIGatewayEvent): Promise<Response> => {
   try {
@@ -18,14 +20,16 @@ export const handler = async (event: APIGatewayEvent): Promise<Response> => {
     }
 
     const parsedBody = JSON.parse(body);
-    const { from, to, reason = "" } = parsedBody;
+    const { from, to, reason = "", fromTime = "", toTime = "" } = parsedBody;
 
     if (!from || !to) {
       return new ResponseObj(400, { message: "from and to are required" });
     }
 
     if (!validateDate(from) || !validateDate(to)) {
-      return new ResponseObj(400, { message: "Invalid date format" });
+      return new ResponseObj(400, {
+        message: "Invalid date format ex: (MM/DD/YYYY), (YYYY-MM-DD)",
+      });
     }
 
     if (new Date(from) > new Date(to)) {
@@ -37,6 +41,8 @@ export const handler = async (event: APIGatewayEvent): Promise<Response> => {
         message: "from date cannot be in the past",
       });
     }
+
+    console.log("Request body parsed:", event);
 
     // Check whether the data is coming from the right key
     // "userId" -> user email
@@ -74,11 +80,14 @@ export const handler = async (event: APIGatewayEvent): Promise<Response> => {
     const putCommand = new PutCommand({
       TableName: process.env.LEAVE_TABLE_NAME || "leave-management-skr",
       Item: leaveObj,
-      ConditionExpression: `attribute_not_exists(${getLeaveId(
-        leaveObj.applicantId,
-        new Date(leaveObj.fromDate),
-        new Date(leaveObj.toDate)
-      )})`,
+      ConditionExpression: `attribute_not_exists(#leaveId)`,
+      ExpressionAttributeNames: {
+        "#leaveId": getLeaveId(
+          leaveObj.applicantId,
+          new Date(leaveObj.fromDate),
+          new Date(leaveObj.toDate)
+        ),
+      },
     });
 
     await docClient.send(putCommand);
@@ -89,6 +98,9 @@ export const handler = async (event: APIGatewayEvent): Promise<Response> => {
       stateMachineArn: process.env.LEAVE_PROCESSING_STATE_MACHINE_ARN!,
       input: JSON.stringify({
         type: "request",
+        timeoutSecondsForRequest: Math.floor(
+          (new Date(to).getTime() - new Date(from).getTime()) / 1000
+        ),
         ...leaveObj,
       }),
     });

@@ -7,13 +7,16 @@ import { QueryCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 // 1. DynamoDB Write access to LEAVE_TABLE_NAME
 // 2. DynamoDB Read access to USER_TABLE_NAME
 // 3. SES SendEmail permission
+// 4. CloudWatch Logs permissions to write logs
 
 interface EventObj {
-  type: "REQUEST" | "ACCEPT" | "REJECT";
-  applicantId?: string; // The email of the user
-  applicantName?: string;
-  fromDate?: string;
-  toDate?: string;
+  input: {
+    type: "REQUEST" | "ACCEPT" | "REJECT";
+    applicantId?: string; // The email of the user
+    applicantName?: string;
+    fromDate?: string;
+    toDate?: string;
+  };
   task_token?: string; // !!! Important for Step Functions integration
 }
 
@@ -34,7 +37,9 @@ class NotificationResult {
 
 export const handler = async (event: EventObj): Promise<any> => {
   try {
-    const { applicantId, applicantName, fromDate, toDate, type } = event;
+    const { applicantId, applicantName, fromDate, toDate, type } = event.input;
+
+    console.log("notify_users event received:", JSON.stringify(event, null, 2));
 
     if (!type) {
       throw getErrorObj("InvalidEvent", "Event type is required");
@@ -68,7 +73,14 @@ export const handler = async (event: EventObj): Promise<any> => {
         const getAllAdminCommand = new QueryCommand({
           TableName: process.env.USER_TABLE_NAME!,
           IndexName: process.env.USER_GSI_NAME!,
-          KeyConditionExpression: "role = ADMIN",
+          // "role" is reserved key word in DynamoDB, so we use ExpressionAttributeNames
+          KeyConditionExpression: "#role = :admin",
+          ExpressionAttributeNames: {
+            "#role": "role",
+          },
+          ExpressionAttributeValues: {
+            ":admin": "ADMIN",
+          },
         });
 
         const resp = await docClient.send(getAllAdminCommand);
@@ -81,8 +93,8 @@ export const handler = async (event: EventObj): Promise<any> => {
 
         const apiBaseUrl =
           process.env.API_BASE_URL || "https://your-api-domain.com";
-        const acceptUrl = `${apiBaseUrl}/leave/accept/${leaveId}`;
-        const rejectUrl = `${apiBaseUrl}/leave/reject/${leaveId}`;
+        const acceptUrl = `${apiBaseUrl}/leave/accept/${leaveId.split("#")[1]}`;
+        const rejectUrl = `${apiBaseUrl}/leave/reject/${leaveId.split("#")[1]}`;
 
         const htmlBody = `
           <!DOCTYPE html>
@@ -181,13 +193,16 @@ export const handler = async (event: EventObj): Promise<any> => {
 
         const plainTextBody = `A new leave application has been submitted by ${applicantName} (${applicantId}) for the period from ${fromDate} to ${toDate}. Please review the application at your earliest convenience.`;
 
-        await sendEmailNotification({
-          sender: process.env.SENDER_EMAIL!,
-          subject: "New Leave Application Submitted",
-          recipients: adminEmails,
-          bodyText: plainTextBody,
-          bodyHtml: htmlBody,
-        });
+        console.log(
+          "Sending admin notifications : ",
+          await sendEmailNotification({
+            sender: process.env.SENDER_EMAIL!,
+            subject: "New Leave Application Submitted",
+            recipients: adminEmails,
+            bodyText: plainTextBody,
+            bodyHtml: htmlBody,
+          })
+        );
 
         // Put the "task_token" into LEAVE_TABLE against each leave_id item
         updateLeaveCommand = new UpdateCommand({
@@ -202,31 +217,37 @@ export const handler = async (event: EventObj): Promise<any> => {
         });
 
         // No result (Since this "wait_for_callback")
-        // result = new NotificationResult(true, "Admin notifications sent", {
-        //   adminNotified: adminEmails.length,
-        //   admins: adminEmails,
-        //   applicantId,
-        //   applicantName,
-        //   fromDate,
-        //   toDate,
-        // });
+        result = new NotificationResult(true, "Admin notifications sent", {
+          adminNotified: adminEmails.length,
+          admins: adminEmails,
+          applicantId,
+          applicantName,
+          fromDate,
+          toDate,
+        });
 
         break;
       }
       case "ACCEPT": {
-        await sendEmailNotification({
-          sender: process.env.SENDER_EMAIL!,
-          subject: "Leave Application Accepted",
-          recipients: [applicantId],
-          bodyText: `Your leave application submitted by ${applicantName} (${applicantId}) for the period from ${fromDate} to ${toDate} has been accepted.`,
-        });
+        console.log(
+          "Acceptance email: ",
+          await sendEmailNotification({
+            sender: process.env.SENDER_EMAIL!,
+            subject: "Leave Application Accepted",
+            recipients: [applicantId],
+            bodyText: `Your leave application submitted by ${applicantName} (${applicantId}) for the period from ${fromDate} to ${toDate} has been accepted.`,
+          })
+        );
 
         updateLeaveCommand = new UpdateCommand({
           TableName: process.env.LEAVE_TABLE_NAME!,
           Key: {
             leaveId,
           },
-          UpdateExpression: "SET task_token = null, status = :accepted",
+          UpdateExpression: "REMOVE task_token SET #status = :accepted",
+          ExpressionAttributeNames: {
+            "#status": "status",
+          },
           ExpressionAttributeValues: {
             ":accepted": "ACCEPTED",
           },
@@ -246,12 +267,15 @@ export const handler = async (event: EventObj): Promise<any> => {
         break;
       }
       case "REJECT": {
-        await sendEmailNotification({
-          sender: process.env.SENDER_EMAIL!,
-          subject: "Leave Application Rejected",
-          recipients: [applicantId],
-          bodyText: `Your leave application submitted by ${applicantName} (${applicantId}) for the period from ${fromDate} to ${toDate} has been rejected.`,
-        });
+        console.log(
+          "Rejection email: ",
+          await sendEmailNotification({
+            sender: process.env.SENDER_EMAIL!,
+            subject: "Leave Application Rejected",
+            recipients: [applicantId],
+            bodyText: `Your leave application submitted by ${applicantName} (${applicantId}) for the period from ${fromDate} to ${toDate} has been rejected.`,
+          })
+        );
 
         result = new NotificationResult(
           true,
@@ -269,7 +293,10 @@ export const handler = async (event: EventObj): Promise<any> => {
           Key: {
             leaveId,
           },
-          UpdateExpression: "SET task_token = null, status = :accepted",
+          UpdateExpression: "REMOVE task_token SET #status = :accepted",
+          ExpressionAttributeNames: {
+            "#status": "status",
+          },
           ExpressionAttributeValues: {
             ":accepted": "REJECTED",
           },

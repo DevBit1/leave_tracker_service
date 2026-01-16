@@ -12,17 +12,20 @@ import { ResponseObj } from "../types";
 /* 
     1. DynamoDB Read access to LEAVE_TABLE_NAME
     2. Step Functions SendTaskSuccess and SendTaskFailure permissions
+    3. CloudWatch Logs permissions to write logs
 */
 
 export const handler = async (event: APIGatewayEvent): Promise<any> => {
   try {
     const { path, pathParameters } = event;
 
+    console.log("Event received in resume_machine:", JSON.stringify(event, null, 2));
+
     if (!pathParameters || !pathParameters["leaveId"]) {
       throw new Error("Missing leaveId in path parameters");
     }
 
-    const leaveId = pathParameters["leaveId"];
+    const leaveId = `LEAVE#${pathParameters["leaveId"]}`;
 
     const getLeaveCommand = new GetCommand({
       TableName: process.env.LEAVE_TABLE_NAME!,

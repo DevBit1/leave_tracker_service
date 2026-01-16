@@ -7,11 +7,11 @@ export const getLeaveId = (
 ) => {
   const hash = createHash("sha256");
   hash.update(`${applicantId}-${fromDate.getTime()}-${toDate.getTime()}`);
-  return `LEAVE#${hash.digest("base64")}`;
+  return `LEAVE#${hash.digest("base64url")}`;
 };
 
 export class Leave {
-  leaveId: string;
+  leaveId: string; // Primary Key
   fromDate: string;
   toDate: string;
   reason?: string;

@@ -1,0 +1,97 @@
+{
+    "StartAt": "Notify Admins",
+    "QueryLanguage": "JSONata",
+    "States": {
+        "Notify Admins": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke.waitForTaskToken",
+            "Arguments": {
+                "FunctionName": "LeaveManagementService-NotifyUsers-SKR",
+                "Payload": {
+                    "task_token": "{% $states.context.Task.Token %}",
+                    "input": "{% $states.input %}"
+                }
+            },
+            "Output": "{% $states.result %}", 
+            "Catch": [
+                {
+                    "ErrorEquals": [
+                        "States.Timeout"
+                    ],
+                    "Next": "Rejection notification",
+                    "Output": {
+                        "type": "reject",
+                        "reason": "Admin did not respond in time",
+                        "applicantId": "{% $states.input.applicantId %}",
+                        "applicantName": "{% $states.input.applicantName %}",
+                        "fromDate": "{% $states.input.fromDate %}",
+                        "toDate": "{% $states.input.toDate %}"
+                    }
+                },
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "Next": "Fail"
+                }
+            ],
+            "Next": "Choice",
+            "TimeoutSeconds": "{% $states.input.timeoutSecondsForRequest %}"
+        },
+        "Choice": {
+            "Type": "Choice",
+            "Choices": [
+                {
+                    "Condition": "{% ($states.input.type) = \"accept\" or ($states.input.type) = \"ACCEPT\"%}",
+                    "Next": "Acceptance notification"
+                },
+                {
+                    "Condition": "{% ($states.input.type) = \"reject\" or ($states.input.type) = \"REJECT\"%}",
+                    "Next": "Rejection notification"
+                }
+            ],
+            "Default": "Fail"
+        },
+        "Acceptance notification": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Arguments": {
+                "FunctionName": "LeaveManagementService-NotifyUsers-SKR",
+                "Payload": {
+                    "input": "{% $states.input %}"
+                }
+            },
+            "Catch": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "Next": "Fail"
+                }
+            ],
+            "End": true
+        },
+        "Rejection notification": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Arguments": {
+                "FunctionName": "LeaveManagementService-NotifyUsers-SKR",
+                "Payload": {
+                    "input": "{% $states.input %}"
+                }
+            },
+            "Catch": [
+                {
+                    "ErrorEquals": [
+                        "States.ALL"
+                    ],
+                    "Next": "Fail"
+                }
+            ],
+            "End": true
+        },
+        "Fail": {
+            "Type": "Fail"
+        }
+    }
+}
