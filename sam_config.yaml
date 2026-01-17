@@ -16,11 +16,8 @@ dev:
         - CAPABILITY_IAM
         - CAPABILITY_NAMED_IAM
       parameter_overrides:
-        SecretName=skr/app/auth_service/secrets 
-        SecretArn=arn:aws:secretsmanager:ap-south-1:817901212217:secret:skr/app/auth_service/secrets-SzzW7L
         UsersTableName=AuthServiceUsersTable-SKR
         UsersGSIName=Role_Based_index
-        SenderEmail=sumanta.rout@antstack.io
   sync:
     parameters:
       template_file: template.[yaml|yml|json]
@@ -33,9 +30,3 @@ dev:
         - CAPABILITY_IAM
         - CAPABILITY_NAMED_IAM
         - CAPABILITY_AUTO_EXPAND
-      parameter_overrides:
-        SecretName=skr/app/auth_service/secrets 
-        SecretArn=arn:aws:secretsmanager:ap-south-1:817901212217:secret:skr/app/auth_service/secrets-SzzW7L
-        UsersTableName=AuthServiceUsersTable-SKR
-        UsersGSIName=Role_Based_index
-        SenderEmail=sumanta.rout@antstack.io

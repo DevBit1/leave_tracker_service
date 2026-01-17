@@ -1,0 +1,36 @@
+name: App Deployment workflow
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy-app:
+    runs-on: ubuntu-latest
+    permissions: # These are important for OIDC-based role assumption
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4 # Or a specific version
+        with:
+          role-to-assume: arn:aws:iam::817901212217:role/DevBit-github-role
+          aws-region: ap-south-1
+      
+      - name: Test auth
+        run: aws sts get-caller-identity
+
+      - name: Build SAM Application
+        run: |
+          sam build
+
+      - name: Deploy sam Application
+        run: |
+          sam deploy --config-env dev --config-file sam_config.yaml --parameter-overrides "SecretArn=${{ secrets.SECRET_ARN }} SecretName=${{ secrets.SECRET_NAME }} SenderEmail=${{ vars.SENDER_EMAIL }} "
