@@ -22,7 +22,6 @@ export const handler = async (
   try {
     const authHeader =
       event?.headers?.["Authorization"] ||
-      event?.headers?.["authorization"] ||
       "";
     const token = authHeader.replace(/^Bearer\s+/i, "").trim();
 

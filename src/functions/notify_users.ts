@@ -9,7 +9,7 @@ import { QueryCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 // 3. SES SendEmail permission
 // 4. CloudWatch Logs permissions to write logs
 
-interface EventObj {
+export interface EventObj {
   input: {
     type: "REQUEST" | "ACCEPT" | "REJECT";
     applicantId?: string; // The email of the user
@@ -85,14 +85,13 @@ export const handler = async (event: EventObj): Promise<any> => {
 
         const resp = await docClient.send(getAllAdminCommand);
 
-        if (!resp?.Items) {
+        if (!resp?.Items || !resp.Items?.length) {
           throw getErrorObj("NoAdminsFound", "No administrators found");
         }
 
         const adminEmails = resp.Items.map((admin) => admin.email);
 
-        const apiBaseUrl =
-          process.env.API_BASE_URL || "https://your-api-domain.com";
+        const apiBaseUrl = process.env.API_BASE_URL;
         const acceptUrl = `${apiBaseUrl}/leave/accept/${leaveId.split("#")[1]}`;
         const rejectUrl = `${apiBaseUrl}/leave/reject/${leaveId.split("#")[1]}`;
 
@@ -193,16 +192,13 @@ export const handler = async (event: EventObj): Promise<any> => {
 
         const plainTextBody = `A new leave application has been submitted by ${applicantName} (${applicantId}) for the period from ${fromDate} to ${toDate}. Please review the application at your earliest convenience.`;
 
-        console.log(
-          "Sending admin notifications : ",
-          await sendEmailNotification({
-            sender: process.env.SENDER_EMAIL!,
-            subject: "New Leave Application Submitted",
-            recipients: adminEmails,
-            bodyText: plainTextBody,
-            bodyHtml: htmlBody,
-          })
-        );
+        await sendEmailNotification({
+          sender: process.env.SENDER_EMAIL!,
+          subject: "New Leave Application Submitted",
+          recipients: adminEmails,
+          bodyText: plainTextBody,
+          bodyHtml: htmlBody,
+        });
 
         // Put the "task_token" into LEAVE_TABLE against each leave_id item
         updateLeaveCommand = new UpdateCommand({
@@ -229,15 +225,12 @@ export const handler = async (event: EventObj): Promise<any> => {
         break;
       }
       case "ACCEPT": {
-        console.log(
-          "Acceptance email: ",
-          await sendEmailNotification({
-            sender: process.env.SENDER_EMAIL!,
-            subject: "Leave Application Accepted",
-            recipients: [applicantId],
-            bodyText: `Your leave application submitted by ${applicantName} (${applicantId}) for the period from ${fromDate} to ${toDate} has been accepted.`,
-          })
-        );
+        await sendEmailNotification({
+          sender: process.env.SENDER_EMAIL!,
+          subject: "Leave Application Accepted",
+          recipients: [applicantId],
+          bodyText: `Your leave application submitted by ${applicantName} (${applicantId}) for the period from ${fromDate} to ${toDate} has been accepted.`,
+        });
 
         updateLeaveCommand = new UpdateCommand({
           TableName: process.env.LEAVE_TABLE_NAME!,
@@ -267,15 +260,12 @@ export const handler = async (event: EventObj): Promise<any> => {
         break;
       }
       case "REJECT": {
-        console.log(
-          "Rejection email: ",
-          await sendEmailNotification({
-            sender: process.env.SENDER_EMAIL!,
-            subject: "Leave Application Rejected",
-            recipients: [applicantId],
-            bodyText: `Your leave application submitted by ${applicantName} (${applicantId}) for the period from ${fromDate} to ${toDate} has been rejected.`,
-          })
-        );
+        await sendEmailNotification({
+          sender: process.env.SENDER_EMAIL!,
+          subject: "Leave Application Rejected",
+          recipients: [applicantId],
+          bodyText: `Your leave application submitted by ${applicantName} (${applicantId}) for the period from ${fromDate} to ${toDate} has been rejected.`,
+        });
 
         result = new NotificationResult(
           true,
@@ -314,6 +304,12 @@ export const handler = async (event: EventObj): Promise<any> => {
     return result;
   } catch (error) {
     console.error("Error in notify_users handler:", error);
+    if (
+      error instanceof Error &&
+      ["InvalidEvent", "MissingTaskToken", "NoAdminsFound"].includes(error.name)
+    ) {
+      throw error;
+    }
     throw getErrorObj("NotificationError", "Failed to send notifications");
   }
 };
