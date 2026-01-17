@@ -32,7 +32,7 @@ export const handler = async (event: APIGatewayEvent): Promise<Response> => {
       return new ResponseObj(400, { message: isValidDateInputs.message });
     }
 
-    console.log("Request body parsed:", event);
+    // console.log("Request body parsed:", event);
 
     // Check whether the data is coming from the right key
     // "userId" -> user email
@@ -85,7 +85,7 @@ export const handler = async (event: APIGatewayEvent): Promise<Response> => {
     });
 
     const putCommand = new PutCommand({
-      TableName: process.env.LEAVE_TABLE_NAME || "leave-management-skr",
+      TableName: process.env.LEAVE_TABLE_NAME,
       Item: leaveObj,
       ConditionExpression: `attribute_not_exists(#leaveId)`,
       ExpressionAttributeNames: {

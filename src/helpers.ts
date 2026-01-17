@@ -97,7 +97,6 @@ export const validateDateInputs = (
         message: "from date cannot be later than to date",
       };
     }
-    return { valid: true };
   }
 
   // Half day or specific time leave
@@ -148,6 +147,13 @@ export const validateDateInputs = (
         message: "from date cannot be later than to date and time",
       };
     }
+  }
+
+  if (fromDate < new Date()) {
+    return {
+      valid: false,
+      message: "from date and time cannot be in the past",
+    };
   }
 
   return { valid: true };
