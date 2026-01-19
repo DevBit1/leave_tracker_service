@@ -21,7 +21,7 @@ export const handler = async (event: APIGatewayEvent): Promise<any> => {
 
     console.log("Event received in resume_machine:", JSON.stringify(event, null, 2));
 
-    if (!pathParameters || !pathParameters["leaveId"]) {
+    if (!pathParameters?.["leaveId"]) {
       throw new Error("Missing leaveId in path parameters");
     }
 

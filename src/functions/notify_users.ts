@@ -58,7 +58,7 @@ export const handler = async (event: EventObj): Promise<any> => {
       new Date(toDate)
     );
 
-    let result = new NotificationResult(false, "No action taken");
+    let result;
     let updateLeaveCommand;
 
     switch (type.toUpperCase()) {
@@ -85,7 +85,7 @@ export const handler = async (event: EventObj): Promise<any> => {
 
         const resp = await docClient.send(getAllAdminCommand);
 
-        if (!resp?.Items || !resp.Items?.length) {
+        if (!resp.Items?.length) {
           throw getErrorObj("NoAdminsFound", "No administrators found");
         }
 

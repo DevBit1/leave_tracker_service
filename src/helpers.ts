@@ -3,11 +3,11 @@ import { SendEmailCommand } from "@aws-sdk/client-ses";
 
 export const validateDate = (dateStr: string): boolean => {
   const date = new Date(dateStr);
-  return !isNaN(date.getTime());
+  return !Number.isNaN(date.getTime());
 };
 
 export const validateTime = (timeStr: string): boolean => {
-  const timeRegex = /^([0-1]?[0-9]|2[0-3]):([0-5][0-9])$/; // HH:MM 24-hour format
+  const timeRegex = /^([0-1]?\d|2[0-3]):([0-5]\d)$/; // HH:MM 24-hour format
   return timeRegex.test(timeStr);
 };
 
