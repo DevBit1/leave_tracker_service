@@ -158,9 +158,8 @@ Resources:
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
-        Format: cjs
         Minify: false
-        Target: node18
+        Sourcemap: true
         EntryPoints:
           - src/auth/authorizer.ts
         External:
@@ -185,9 +184,8 @@ Resources:
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
-        Format: cjs
         Minify: false
-        Target: node18
+        Sourcemap: true
         EntryPoints:
           - src/functions/leave_generate.ts
         External:
@@ -217,9 +215,8 @@ Resources:
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
-        Format: cjs
         Minify: false
-        Target: node18
+        Sourcemap: true
         EntryPoints:
           - src/functions/resume_machine.ts
         External:
@@ -287,9 +284,8 @@ Resources:
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
-        Format: cjs
         Minify: false
-        Target: node18
+        Sourcemap: true
         EntryPoints:
           - src/functions/notify_users.ts
         External:
