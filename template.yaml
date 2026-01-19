@@ -227,6 +227,38 @@ Resources:
           - "@aws-sdk/client-dynamodb"
           - "aws-lambda"
 
+  ResumeStateMachineLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${ResumeStateMachine}"
+      RetentionInDays: 14
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    
+  AuthorizerFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${AuthorizerFunction}"
+      RetentionInDays: 14
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+
+  LeaveRequestFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${LeaveRequestFunction}"
+      RetentionInDays: 14
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+
+  NotifyUsersFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${NotifyUsersFunction}"
+      RetentionInDays: 14
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+
   NotifyUsersFunction:
     Type: AWS::Serverless::Function
     Properties:
