@@ -35,21 +35,91 @@ Resources:
     Properties:
       Name: LeaveManagementService-API-SKR
       StageName: dev
+      DefinitionBody:
+        openapi: 3.0.0
+        info:
+          title: Leave Management Service API
+          version: 1.0.0
+        paths:
+          /leave/request:
+            post:
+              summary: Submit a leave request
+              requestBody:
+                required: true
+                content:
+                  application/json:
+                    schema:
+                      type: object
+                      properties:
+                        startDate:
+                          type: string
+                          format: date
+                        endDate:
+                          type: string
+                          format: date
+                        reason:
+                          type: string
+                      required:
+                        - startDate
+                        - endDate
+              responses:
+                "200":
+                  description: Success
+              security:
+                - LambdaAuthorizer: []
+              x-amazon-apigateway-integration:
+                type: aws_proxy
+                httpMethod: POST
+                uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LeaveRequestFunction.Arn}/invocations"
+          /leave/accept/{leaveId}:
+            get:
+              summary: Accept a leave request
+              parameters:
+                - name: leaveId
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+              responses:
+                "200":
+                  description: Success
+              x-amazon-apigateway-integration:
+                type: aws_proxy
+                httpMethod: POST
+                uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ResumeStateMachine.Arn}/invocations"
+          /leave/reject/{leaveId}:
+            get:
+              summary: Reject a leave request
+              parameters:
+                - name: leaveId
+                  in: path
+                  required: true
+                  schema:
+                    type: string
+              responses:
+                "200":
+                  description: Success
+              x-amazon-apigateway-integration:
+                type: aws_proxy
+                httpMethod: POST
+                uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ResumeStateMachine.Arn}/invocations"
+        components:
+          securitySchemes:
+            LambdaAuthorizer:
+              type: apiKey
+              name: Authorization
+              in: header
+              x-amazon-apigateway-authtype: custom
+              x-amazon-apigateway-authorizer:
+                type: request
+                authorizerUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AuthorizerFunction.Arn}/invocations"
+                authorizerResultTtlInSeconds: 100
+                identitySource: method.request.header.Authorization
       MethodSettings:
         - LoggingLevel: INFO
           DataTraceEnabled: true
           HttpMethod: "*"
           ResourcePath: "/*"
-      Auth:
-        Authorizers:
-          LambdaRequestAuthorizerFn:
-            FunctionArn: !GetAtt AuthorizerFunction.Arn
-            FunctionPayloadType: REQUEST
-            Identity:
-              Headers:
-                - Authorization
-              ReauthorizeEvery: 100
-        DefaultAuthorizer: LambdaRequestAuthorizerFn
 
   LeaveRequestTable:
     Type: AWS::Serverless::SimpleTable
@@ -112,13 +182,6 @@ Resources:
         Variables:
           LEAVE_TABLE_NAME: !Ref LeaveRequestTable
           LEAVE_PROCESSING_STATE_MACHINE_ARN: !Ref LeaveManagementStateMachine
-      Events:
-        RequestApi:
-          Type: Api
-          Properties:
-            Path: /leave/request
-            Method: post
-            RestApiId: !Ref LeaveGateway
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -151,23 +214,6 @@ Resources:
       Environment:
         Variables:
           LEAVE_TABLE_NAME: !Ref LeaveRequestTable
-      Events:
-        AcceptApi:
-          Type: Api
-          Properties:
-            Path: /leave/accept/{leaveId}
-            Method: get
-            RestApiId: !Ref LeaveGateway
-            Auth:
-              Authorizer: NONE
-        RejectApi:
-          Type: Api
-          Properties:
-            Path: /leave/reject/{leaveId}
-            Method: get
-            RestApiId: !Ref LeaveGateway
-            Auth:
-              Authorizer: NONE
     Metadata:
       BuildMethod: esbuild
       BuildProperties:
@@ -218,6 +264,30 @@ Resources:
           - "@aws-sdk/client-dynamodb"
           - "@aws-sdk/client-ses"
           - "aws-lambda"
+
+  AuthorizerInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref AuthorizerFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${LeaveGateway}/*"
+
+  LeaveRequestInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref LeaveRequestFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${LeaveGateway}/*/*"
+
+  ResumeStateMachineInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ResumeStateMachine
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${LeaveGateway}/*/*"
 
 Outputs:
   LeaveApiUrl:
