@@ -59,7 +59,7 @@ export const getErrorObj = (name: string, message?: string): Error => {
   return err;
 };
 
-export const validateDateInputs = (
+const validateDateAndFormat = (
   from: string,
   to: string,
   fromTime?: string,
@@ -86,6 +86,15 @@ export const validateDateInputs = (
     };
   }
 
+  return { valid: true };
+};
+
+const validateFromToOrder = (
+  from: string,
+  to: string,
+  fromTime?: string,
+  toTime?: string
+): { valid: boolean; message?: string } => {
   const fromDate = new Date(from);
   const toDate = new Date(to);
 
@@ -104,14 +113,6 @@ export const validateDateInputs = (
     const [fromHours, fromMinutes] = fromTime.split(":").map(Number);
     const fromDateTime = new Date(from);
     fromDateTime.setHours(fromHours, fromMinutes, 0, 0);
-
-    const now = new Date();
-    if (fromDateTime < now) {
-      return {
-        valid: false,
-        message: "from date and time cannot be in the past",
-      };
-    }
 
     if (toTime) {
       const [toHours, toMinutes] = toTime.split(":").map(Number);
@@ -149,11 +150,53 @@ export const validateDateInputs = (
     }
   }
 
-  if (fromDate < new Date()) {
+  return { valid: true };
+};
+
+const validateNotPast = (
+  from: string,
+  fromTime?: string
+): { valid: boolean; message?: string } => {
+  if (fromTime) {
+    const [fromHours, fromMinutes] = fromTime.split(":").map(Number);
+    const fromDateTime = new Date(from);
+    fromDateTime.setHours(fromHours, fromMinutes, 0, 0);
+
+    const now = new Date();
+    if (fromDateTime < now) {
+      return {
+        valid: false,
+        message: "from date and time cannot be in the past",
+      };
+    }
+  }
+
+  if (new Date(from) < new Date()) {
     return {
       valid: false,
       message: "from date and time cannot be in the past",
     };
+  }
+
+  return { valid: true };
+};
+
+export const validateDateInputs = (
+  from: string,
+  to: string,
+  fromTime?: string,
+  toTime?: string
+): { valid: boolean; message?: string } => {
+  const validations = [
+    validateDateAndFormat(from, to, fromTime, toTime),
+    validateFromToOrder(from, to, fromTime, toTime),
+    validateNotPast(from, fromTime),
+  ];
+
+  for (const result of validations) {
+    if (!result.valid) {
+      return result;
+    }
   }
 
   return { valid: true };
