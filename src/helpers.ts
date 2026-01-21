@@ -89,65 +89,54 @@ const validateDateAndFormat = (
   return { valid: true };
 };
 
+const buildDateTime = (
+  dateStr: string,
+  timeStr?: string,
+  defaultToEnd = false
+): Date => {
+  const date = new Date(dateStr);
+  if (timeStr) {
+    const [hours, minutes] = timeStr.split(":").map(Number);
+    date.setHours(hours, minutes, 0, 0);
+  } else if (defaultToEnd) {
+    date.setHours(23, 59, 59, 999);
+  } else {
+    date.setHours(0, 0, 0, 0);
+  }
+  return date;
+};
+
 const validateFromToOrder = (
   from: string,
   to: string,
   fromTime?: string,
   toTime?: string
 ): { valid: boolean; message?: string } => {
-  const fromDate = new Date(from);
-  const toDate = new Date(to);
-
-  // Full day leave (no times provided) - from must be less than or equal to to
+  // Full day leave (no times provided)
   if (!fromTime && !toTime) {
+    const fromDate = buildDateTime(from);
+    const toDate = buildDateTime(to);
     if (fromDate > toDate) {
       return {
         valid: false,
         message: "from date cannot be later than to date",
       };
     }
+    return { valid: true };
   }
 
-  // Half day or specific time leave
-  if (fromTime) {
-    const [fromHours, fromMinutes] = fromTime.split(":").map(Number);
-    const fromDateTime = new Date(from);
-    fromDateTime.setHours(fromHours, fromMinutes, 0, 0);
+  // Partial day or timed leave
+  const startDateTime = buildDateTime(from, fromTime);
+  const endDateTime = buildDateTime(to, toTime, true);
 
-    if (toTime) {
-      const [toHours, toMinutes] = toTime.split(":").map(Number);
-      const toDateTime = new Date(to);
-      toDateTime.setHours(toHours, toMinutes, 0, 0);
-
-      if (fromDateTime > toDateTime) {
-        return {
-          valid: false,
-          message: "from date and time cannot be later than to date and time",
-        };
-      }
-    } else {
-      // fromTime provided but toTime not provided - from with time must be before end of to date
-      toDate.setHours(23, 59, 59, 999);
-      if (fromDateTime > toDate) {
-        return {
-          valid: false,
-          message: "from date and time cannot be later than to date",
-        };
-      }
+  if (startDateTime > endDateTime) {
+    let message = "from date and time cannot be later than to date and time";
+    if (fromTime && !toTime) {
+      message = "from date and time cannot be later than to date";
+    } else if (!fromTime && toTime) {
+      message = "from date cannot be later than to date and time";
     }
-  } else if (toTime) {
-    // toTime provided but fromTime not provided - from (start of day) must be before toTime
-    const [toHours, toMinutes] = toTime.split(":").map(Number);
-    const toDateTime = new Date(to);
-    toDateTime.setHours(toHours, toMinutes, 0, 0);
-
-    fromDate.setHours(0, 0, 0, 0);
-    if (fromDate > toDateTime) {
-      return {
-        valid: false,
-        message: "from date cannot be later than to date and time",
-      };
-    }
+    return { valid: false, message };
   }
 
   return { valid: true };
